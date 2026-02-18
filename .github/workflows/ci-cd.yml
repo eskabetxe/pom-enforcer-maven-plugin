@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  validate-main:
+  ci-cd:
     runs-on: ubuntu-latest
 
     steps:

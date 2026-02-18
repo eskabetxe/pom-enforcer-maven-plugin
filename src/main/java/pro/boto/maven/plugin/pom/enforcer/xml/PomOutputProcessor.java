@@ -16,6 +16,12 @@ import java.util.List;
 
 public class PomOutputProcessor extends AbstractXMLOutputProcessor {
 
+    private final boolean indentSchemaLocation;
+
+    public PomOutputProcessor(boolean indentSchemaLocation) {
+        this.indentSchemaLocation = indentSchemaLocation;
+    }
+
     @Override
     protected void printElement(Writer out, FormatStack fstack, NamespaceStack nstack, Element element)
             throws IOException {
@@ -65,8 +71,12 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
 
     private void handleRootTagFormatting(Writer out, FormatStack fstack, NamespaceStack nstack, Element element)
             throws IOException {
-        if (!"project".equals(element.getName())) {
-            // Standard attribute printing for non-root elements
+        if (!indentSchemaLocation || !"project".equals(element.getName())) {
+            // Correctly iterate and print all introduced namespaces
+            for (Namespace ns : nstack.addedForward()) {
+                super.printNamespace(out, fstack, ns);
+            }
+            // Print all attributes using standard space-separated logic
             if (element.hasAttributes()) {
                 for (Attribute attribute : element.getAttributes()) {
                     this.printAttribute(out, fstack, attribute);

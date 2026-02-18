@@ -7,6 +7,33 @@
     <artifactId>pom-enforcer-maven-plugin</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>maven-plugin</packaging>
+    <name>POM Enforcer Maven Plugin</name>
+    <description>A Maven plugin designed to ensure architectural consistency and pedantic organization within pom.xml files.</description>
+    <url>https://github.com/eskabetxe/pom-enforcer-maven-plugin</url>
+    <licenses>
+        <license>
+            <name>The Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>eskabetxe</id>
+            <name>Joao Boto</name>
+            <email>eskabetxe@gmail.com</email>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:git://github.com/eskabetxe/pom-enforcer-maven-plugin.git</connection>
+        <developerConnection>scm:git:ssh://github.com:eskabetxe/pom-enforcer-maven-plugin.git</developerConnection>
+        <url>https://github.com/eskabetxe/pom-enforcer-maven-plugin/tree/main</url>
+    </scm>
+    <distributionManagement>
+        <snapshotRepository>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
     <properties>
         <project.build.sourceEncoding>${project.encoding}</project.build.sourceEncoding>
         <project.encoding>UTF-8</project.encoding>
@@ -52,36 +79,6 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <source>${project.jvm.version}</source>
-                    <target>${project.jvm.version}</target>
-                    <release>${project.jvm.version}</release>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-plugin-plugin</artifactId>
-                <version>3.15.2</version>
-                <configuration>
-                    <goalPrefix>pom-enforcer</goalPrefix>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>default-descriptor</id>
-                        <phase>process-classes</phase>
-                    </execution>
-                    <execution>
-                        <id>help-goal</id>
-                        <goals>
-                            <goal>helpmojo</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
                 <version>2.44.3</version>
@@ -115,26 +112,44 @@
                 </executions>
             </plugin>
             <plugin>
-                <groupId>pro.boto</groupId>
-                <artifactId>pom-enforcer-maven-plugin</artifactId>
-                <version>0.0.1-SNAPSHOT</version>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
                 <configuration>
-                    <keepBlankLines>false</keepBlankLines>
-                    <indentSpacesNumber>4</indentSpacesNumber>
-                    <formatSchemaLocation>true</formatSchemaLocation>
-                    <encoding>${project.encoding}</encoding>
-                    <dependencySort>groupId,artifactId,scope,classifier</dependencySort>
-                    <bomAtBeginning>true</bomAtBeginning>
-                    <bomKeepOrder>true</bomKeepOrder>
+                    <source>${project.jvm.version}</source>
+                    <target>${project.jvm.version}</target>
+                    <release>${project.jvm.version}</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-plugin-plugin</artifactId>
+                <version>3.15.2</version>
+                <configuration>
+                    <goalPrefix>pom-enforcer</goalPrefix>
                 </configuration>
                 <executions>
                     <execution>
+                        <id>default-descriptor</id>
+                        <phase>process-classes</phase>
+                    </execution>
+                    <execution>
+                        <id>help-goal</id>
                         <goals>
-                            <goal>check</goal>
+                            <goal>helpmojo</goal>
                         </goals>
-                        <phase>validate</phase>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.10.0</version>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>false</autoPublish>
+                </configuration>
+                <extensions>true</extensions>
             </plugin>
         </plugins>
     </build>
