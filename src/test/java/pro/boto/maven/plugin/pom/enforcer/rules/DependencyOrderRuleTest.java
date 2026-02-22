@@ -1,8 +1,9 @@
-package pro.boto.maven.plugin.pom.enforcer.parsers;
+package pro.boto.maven.plugin.pom.enforcer.rules;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import pro.boto.maven.plugin.pom.enforcer.xml.PomSerde;
+import pro.boto.maven.plugin.pom.enforcer.format.PomSerde;
+import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -12,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import java.io.StringReader;
 import java.util.List;
 
-class DependencySortParserTest {
+class DependencyOrderRuleTest {
 
-    private final PomSerde pomSerde = new PomSerde();
+    private final PomSerde pomSerde = PomSerde.defaultConfig();
     private final Namespace ns = Namespace.getNamespace("http://maven.apache.org/POM/4.0.0");
 
     @Test
@@ -27,13 +28,12 @@ class DependencySortParserTest {
                 + "</project>";
         Document doc = pomSerde.deserialize(new StringReader(xml));
 
-        // Arrange: No BOM priority, sort by G:A
-        DependencySortParser parser = new DependencySortParser();
+        DependencyOrderRule rule = new DependencyOrderRule();
 
-        // Act
-        parser.accept(doc);
-
+        List<RuleViolation> violations = rule.apply(doc);
         // Assert
+        assertThat(violations).isNotEmpty();
+
         List<Element> deps = doc.getRootElement().getChild("dependencies", ns).getChildren();
         assertThat(deps)
                 .extracting(e -> e.getChildText("artifactId", ns))
@@ -51,10 +51,11 @@ class DependencySortParserTest {
         Document doc = pomSerde.deserialize(new StringReader(xml));
 
         // Arrange: BOMs first, and sort the BOMs themselves by groupId
-        DependencySortParser parser = new DependencySortParser().withBomKeepOrder(false);
+        DependencyOrderRule rule = new DependencyOrderRule().withBomKeepOrder(false);
 
-        // Act
-        parser.accept(doc);
+        List<RuleViolation> violations = rule.apply(doc);
+        // Assert
+        assertThat(violations).isNotEmpty();
 
         // Assert
         List<Element> deps = doc.getRootElement().getChild("dependencies", ns).getChildren();
@@ -72,12 +73,11 @@ class DependencySortParserTest {
         Document doc = pomSerde.deserialize(new StringReader(xml));
 
         // Arrange: BOMs first, but keep their relative order (M then A)
-        DependencySortParser parser = new DependencySortParser();
+        DependencyOrderRule rule = new DependencyOrderRule();
 
-        // Act
-        parser.accept(doc);
-
+        List<RuleViolation> violations = rule.apply(doc);
         // Assert
+        assertThat(violations).isNotEmpty();
         List<Element> deps = doc.getRootElement().getChild("dependencies", ns).getChildren();
         assertThat(deps).extracting(e -> e.getChildText("groupId", ns)).containsExactly("M.bom", "A.bom", "Z.regular");
     }
@@ -93,12 +93,11 @@ class DependencySortParserTest {
         Document doc = pomSerde.deserialize(new StringReader(xml));
 
         // Arrange: No BOM priority, sort by scope (alphabetical) then groupId
-        DependencySortParser parser = new DependencySortParser();
+        DependencyOrderRule rule = new DependencyOrderRule();
 
-        // Act
-        parser.accept(doc);
-
+        List<RuleViolation> violations = rule.apply(doc);
         // Assert
+        assertThat(violations).isNotEmpty();
         List<Element> deps = doc.getRootElement().getChild("dependencies", ns).getChildren();
         assertThat(deps).extracting(e -> e.getChildText("groupId", ns)).containsExactly("A", "B", "C");
     }
@@ -113,12 +112,11 @@ class DependencySortParserTest {
                 + "  </dependencyManagement>"
                 + "</project>";
         Document doc = pomSerde.deserialize(new StringReader(xml));
-        DependencySortParser parser = new DependencySortParser();
+        DependencyOrderRule rule = new DependencyOrderRule();
 
-        // Act
-        parser.accept(doc);
-
+        List<RuleViolation> violations = rule.apply(doc);
         // Assert
+        assertThat(violations).isNotEmpty();
         List<Element> deps = doc.getRootElement()
                 .getChild("dependencyManagement", ns)
                 .getChild("dependencies", ns)

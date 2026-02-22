@@ -1,15 +1,16 @@
 package pro.boto.maven.plugin.pom.enforcer;
 
-import static pro.boto.maven.plugin.pom.enforcer.parsers.DependencySortParser.DEFAULT_BOM_AT_BEGINNING;
-import static pro.boto.maven.plugin.pom.enforcer.parsers.DependencySortParser.DEFAULT_BOM_KEEP_ORDER;
-import static pro.boto.maven.plugin.pom.enforcer.parsers.DependencySortParser.DEFAULT_SORTING_ORDER;
-import static pro.boto.maven.plugin.pom.enforcer.parsers.TemplateOrderParser.DEFAULT_TEMPLATE_PATH;
-import static pro.boto.maven.plugin.pom.enforcer.xml.PomSerde.*;
+import static pro.boto.maven.plugin.pom.enforcer.format.FormattingConfig.*;
+import static pro.boto.maven.plugin.pom.enforcer.rules.DependencyOrderRule.DEFAULT_BOM_AT_BEGINNING;
+import static pro.boto.maven.plugin.pom.enforcer.rules.DependencyOrderRule.DEFAULT_BOM_KEEP_ORDER;
+import static pro.boto.maven.plugin.pom.enforcer.rules.DependencyOrderRule.DEFAULT_SORTING_ORDER;
+import static pro.boto.maven.plugin.pom.enforcer.rules.TemplateOrderRule.DEFAULT_TEMPLATE_PATH;
 
-import pro.boto.maven.plugin.pom.enforcer.parsers.DependencySortParser;
-import pro.boto.maven.plugin.pom.enforcer.parsers.Parser;
-import pro.boto.maven.plugin.pom.enforcer.parsers.TemplateOrderParser;
-import pro.boto.maven.plugin.pom.enforcer.xml.PomSerde;
+import pro.boto.maven.plugin.pom.enforcer.format.FormattingConfig;
+import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
+import pro.boto.maven.plugin.pom.enforcer.rules.DependencyOrderRule;
+import pro.boto.maven.plugin.pom.enforcer.rules.PomRule;
+import pro.boto.maven.plugin.pom.enforcer.rules.TemplateOrderRule;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -61,31 +62,35 @@ public abstract class PomEnforcerMojo extends AbstractMojo {
     protected void processProjects(boolean applyChanges) throws MojoExecutionException {
         List<File> violatedFiles = new ArrayList<>();
 
-        List<Parser> parsers = new LinkedList<>();
-        parsers.add(new TemplateOrderParser().withTemplatePath(templateOrder));
-        parsers.add(new DependencySortParser()
+        List<PomRule> parsers = new LinkedList<>();
+        parsers.add(new TemplateOrderRule().withTemplatePath(templateOrder));
+        parsers.add(new DependencyOrderRule()
                 .withBomAtBeginning(bomAtBeginning)
                 .withBomKeepOrder(bomKeepOrder)
                 .withSortingOrder(dependencySort));
 
-        PomSerde pomSerde = new PomSerde()
-                .withEncoding(encoding)
-                .withFormatSchemaLocation(formatSchemaLocation)
-                .withIndentSchemaLocation(indentSchemaLocation)
-                .withIndentSpacesNumber(indentSpacesNumber)
-                .withKeepBlankLines(keepBlankLines)
-                .withLineSeparator(lineSeparator);
+        FormattingConfig formattingConfig = new FormattingConfig(
+                this.encoding,
+                this.formatSchemaLocation,
+                this.indentSchemaLocation,
+                this.indentSpacesNumber,
+                this.keepBlankLines,
+                this.lineSeparator);
 
-        PomEnforcerProcessor processor = new PomEnforcerProcessor(pomSerde, parsers);
+        PomEnforcerProcessor processor = new PomEnforcerProcessor(formattingConfig, parsers);
 
         for (MavenProject project : reactorProjects) {
             File pomFile = project.getFile();
             if (pomFile == null || !pomFile.exists()) continue;
 
             try {
-                if (processor.process(pomFile, applyChanges)) {
+                List<RuleViolation> violations = processor.process(pomFile, applyChanges);
+                if (!violations.isEmpty()) {
                     if (applyChanges) {
                         getLog().info("Applied changes to: " + pomFile.getName());
+                    } else {
+                        violations.forEach(
+                                v -> getLog().error("Violation in " + pomFile.getName() + ": " + v.toString()));
                     }
                     violatedFiles.add(pomFile);
                 }

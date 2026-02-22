@@ -1,8 +1,9 @@
-package pro.boto.maven.plugin.pom.enforcer.parsers;
+package pro.boto.maven.plugin.pom.enforcer.rules;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import pro.boto.maven.plugin.pom.enforcer.xml.PomSerde;
+import pro.boto.maven.plugin.pom.enforcer.format.PomSerde;
+import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -11,9 +12,9 @@ import org.junit.jupiter.api.Test;
 import java.io.StringReader;
 import java.util.List;
 
-class TemplateOrderParserTest {
+class TemplateOrderRuleTest {
 
-    private final PomSerde pomSerde = new PomSerde();
+    private final PomSerde pomSerde = PomSerde.defaultConfig();
 
     @Test
     void testApplyGoalSortsRecursively() throws Exception {
@@ -25,8 +26,10 @@ class TemplateOrderParserTest {
 
         Document doc = pomSerde.deserialize(new StringReader(content));
 
-        TemplateOrderParser template = new TemplateOrderParser();
-        template.accept(doc);
+        TemplateOrderRule template = new TemplateOrderRule();
+        List<RuleViolation> violations = template.apply(doc);
+        // Assert
+        assertThat(violations).isNotEmpty();
 
         // Assert: Extract child names and verify order using AssertJ
         List<Element> children = doc.getRootElement().getChildren();

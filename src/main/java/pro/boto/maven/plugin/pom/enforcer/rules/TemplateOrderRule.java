@@ -1,4 +1,6 @@
-package pro.boto.maven.plugin.pom.enforcer.parsers;
+package pro.boto.maven.plugin.pom.enforcer.rules;
+
+import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -12,17 +14,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class TemplateOrderParser implements Parser {
+public class TemplateOrderRule implements PomRule {
 
     public static final String DEFAULT_TEMPLATE_PATH = "/default_formatter.xml";
 
     private final Map<String, List<String>> orderMap = new HashMap<>();
 
-    public TemplateOrderParser() {
+    public TemplateOrderRule() {
         withTemplatePath(DEFAULT_TEMPLATE_PATH);
     }
 
-    public TemplateOrderParser withTemplatePath(String templatePath) {
+    public TemplateOrderRule withTemplatePath(String templatePath) {
         if (templatePath != null && !templatePath.isBlank()) {
             SAXBuilder builder = new SAXBuilder();
             // Always load from resources (classpath)
@@ -50,8 +52,29 @@ public class TemplateOrderParser implements Parser {
     }
 
     @Override
-    public void accept(Document parent) {
-        sortElement(parent.getRootElement());
+    public String getName() {
+        return "template-order";
+    }
+
+    @Override
+    public List<RuleViolation> apply(Document document) {
+        List<RuleViolation> violations = new ArrayList<>();
+        sortAndCheck(document.getRootElement(), violations);
+        return violations;
+    }
+
+    private void sortAndCheck(Element parent, List<RuleViolation> violations) {
+        List<Element> original = new ArrayList<>(parent.getChildren());
+        sortElement(parent);
+
+        if (!original.equals(parent.getChildren())) {
+            violations.add(new RuleViolation(
+                    getName(), "Elements in <" + parent.getName() + "> were not in the correct order."));
+        }
+
+        for (Element child : parent.getChildren()) {
+            sortAndCheck(child, violations);
+        }
     }
 
     public void sortElement(Element parent) {
