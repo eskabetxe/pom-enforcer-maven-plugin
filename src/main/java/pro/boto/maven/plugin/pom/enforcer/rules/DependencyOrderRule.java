@@ -1,6 +1,7 @@
 package pro.boto.maven.plugin.pom.enforcer.rules;
 
 import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
+import pro.boto.maven.plugin.pom.enforcer.model.ViolationDetail;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -8,27 +9,30 @@ import org.jdom2.Namespace;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class DependencyOrderRule implements PomRule {
-    public static final String DEFAULT_SORTING_ORDER = "groupId,artifactId,scope,classifier";
-    public static final boolean DEFAULT_BOM_AT_BEGINNING = true;
-    public static final boolean DEFAULT_BOM_KEEP_ORDER = true;
+
+    public static final String DEFAULT_SORT_BY = "groupId,artifactId,scope,classifier";
+    public static final boolean DEFAULT_BOM_FIRST = true;
+    public static final boolean DEFAULT_BOM_PRESERVE_ORDER = true;
 
     private List<String> sortFields;
-    private boolean bomAtBeginning;
-    private boolean bomKeepOrder;
+    private boolean bomFirst;
+    private boolean bomPreserveOrder;
 
     public DependencyOrderRule() {
-        withSortingOrder(DEFAULT_SORTING_ORDER);
-        withBomAtBeginning(DEFAULT_BOM_AT_BEGINNING);
-        withBomKeepOrder(DEFAULT_BOM_KEEP_ORDER);
+        withSortBy(DEFAULT_SORT_BY);
+        withBomFirst(DEFAULT_BOM_FIRST);
+        withBomPreserveOrder(DEFAULT_BOM_PRESERVE_ORDER);
     }
 
-    public DependencyOrderRule withSortingOrder(String sortingOrder) {
-        if (sortingOrder != null && !sortingOrder.isBlank()) {
-            this.sortFields = Arrays.stream(sortingOrder.split(","))
+    public DependencyOrderRule withSortBy(String sortBy) {
+        if (sortBy != null && !sortBy.isBlank()) {
+            this.sortFields = Arrays.stream(sortBy.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .collect(Collectors.toList());
@@ -36,13 +40,13 @@ public class DependencyOrderRule implements PomRule {
         return this;
     }
 
-    public DependencyOrderRule withBomAtBeginning(boolean bomAtBeginning) {
-        this.bomAtBeginning = bomAtBeginning;
+    public DependencyOrderRule withBomFirst(boolean bomFirst) {
+        this.bomFirst = bomFirst;
         return this;
     }
 
-    public DependencyOrderRule withBomKeepOrder(boolean bomKeepOrder) {
-        this.bomKeepOrder = bomKeepOrder;
+    public DependencyOrderRule withBomPreserveOrder(boolean bomPreserveOrder) {
+        this.bomPreserveOrder = bomPreserveOrder;
         return this;
     }
 
@@ -52,52 +56,94 @@ public class DependencyOrderRule implements PomRule {
     }
 
     @Override
-    public List<RuleViolation> apply(Document document) {
+    public int getPriority() {
+        return 200;
+    }
+
+    // ---- READ-ONLY ----
+
+    @Override
+    public List<RuleViolation> analyze(Document document) {
         List<RuleViolation> violations = new ArrayList<>();
         Element root = document.getRootElement();
         Namespace ns = root.getNamespace();
 
-        checkSection(root.getChild("dependencies", ns), ns, violations, "dependencies");
+        analyzeSection(root.getChild("dependencies", ns), ns, violations, "dependencies", false);
 
         Element mgmt = root.getChild("dependencyManagement", ns);
         if (mgmt != null) {
-            checkSection(mgmt.getChild("dependencies", ns), ns, violations, "dependencyManagement/dependencies");
+            analyzeSection(
+                    mgmt.getChild("dependencies", ns), ns, violations, "dependencyManagement/dependencies", true);
         }
 
         return violations;
     }
 
-    private void checkSection(Element parent, Namespace ns, List<RuleViolation> violations, String path) {
+    private void analyzeSection(
+            Element parent, Namespace ns, List<RuleViolation> violations, String path, boolean isManagedSection) {
         if (parent == null || parent.getChildren().size() < 2) return;
 
-        List<Element> original = new ArrayList<>(parent.getChildren());
-        // sort logic using compareDependencies
+        List<Element> original = parent.getChildren();
         List<Element> sorted = new ArrayList<>(original);
-        sorted.sort((left, right) -> compareDependencies(left, right, ns));
+        sorted.sort(dependencyComparator(ns, isManagedSection));
 
-        if (!original.equals(sorted)) {
-            violations.add(new RuleViolation(getName(), "Dependencies in <" + path + "> are not sorted."));
-            parent.setContent(sorted);
+        if (!elementsMatchOrder(original, sorted, ns)) {
+            List<String> currentOrder =
+                    original.stream().map(e -> gavLabel(e, ns)).collect(Collectors.toList());
+            List<String> expectedOrder =
+                    sorted.stream().map(e -> gavLabel(e, ns)).collect(Collectors.toList());
+
+            ViolationDetail detail =
+                    new ViolationDetail(path, String.join(", ", expectedOrder), String.join(", ", currentOrder));
+
+            violations.add(new RuleViolation(
+                    getName(), "Dependencies in <" + path + "> are not sorted.", Collections.singletonList(detail)));
         }
     }
 
-    private int compareDependencies(Element left, Element right, Namespace ns) {
-        if (bomAtBeginning) {
+    // ---- MUTATION ----
+
+    @Override
+    public void apply(Document document) {
+        Element root = document.getRootElement();
+        Namespace ns = root.getNamespace();
+
+        sortSection(root.getChild("dependencies", ns), ns, false);
+
+        Element mgmt = root.getChild("dependencyManagement", ns);
+        if (mgmt != null) {
+            sortSection(mgmt.getChild("dependencies", ns), ns, true);
+        }
+    }
+
+    private void sortSection(Element parent, Namespace ns, boolean isManagedSection) {
+        if (parent == null || parent.getChildren().size() < 2) return;
+
+        List<Element> sorted = new ArrayList<>(parent.getChildren());
+        sorted.sort(dependencyComparator(ns, isManagedSection));
+        parent.setContent(sorted);
+    }
+
+    // ---- SHARED ----
+
+    private Comparator<Element> dependencyComparator(Namespace ns, boolean isManagedSection) {
+        return (left, right) -> compareDependencies(left, right, ns, isManagedSection);
+    }
+
+    private int compareDependencies(Element left, Element right, Namespace ns, boolean isManagedSection) {
+        // BOM handling only applies to dependencyManagement
+        if (bomFirst && isManagedSection) {
             boolean leftIsBom = isBom(left, ns);
             boolean rightIsBom = isBom(right, ns);
 
             if (leftIsBom && !rightIsBom) return -1;
             if (!leftIsBom && rightIsBom) return 1;
-
-            // If both are BOMs and we want to preserve their original order
-            if (leftIsBom && rightIsBom && bomKeepOrder) return 0;
+            if (leftIsBom && rightIsBom && bomPreserveOrder) return 0;
         }
 
-        // Standard sorting logic for non-BOMs (or all if not using bomAtBeginning)
         for (String field : sortFields) {
             String leftVal = getChildText(left, field, ns);
             String rightVal = getChildText(right, field, ns);
-
             int comparison = leftVal.compareTo(rightVal);
             if (comparison != 0) return comparison;
         }
@@ -113,5 +159,19 @@ public class DependencyOrderRule implements PomRule {
     private String getChildText(Element element, String name, Namespace ns) {
         Element child = element.getChild(name, ns);
         return (child != null) ? child.getTextTrim() : "";
+    }
+
+    private String gavLabel(Element dep, Namespace ns) {
+        return getChildText(dep, "groupId", ns) + ":" + getChildText(dep, "artifactId", ns);
+    }
+
+    private boolean elementsMatchOrder(List<Element> original, List<Element> sorted, Namespace ns) {
+        if (original.size() != sorted.size()) return false;
+        for (int i = 0; i < original.size(); i++) {
+            if (!gavLabel(original.get(i), ns).equals(gavLabel(sorted.get(i), ns))) {
+                return false;
+            }
+        }
+        return true;
     }
 }

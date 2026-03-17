@@ -1,10 +1,9 @@
-package pro.boto.maven.plugin.pom.enforcer.format;
+package pro.boto.maven.plugin.pom.enforcer.serde;
 
-import pro.boto.maven.plugin.pom.enforcer.xml.PomOutputProcessor;
+import pro.boto.maven.plugin.pom.enforcer.format.FormattingConfig;
 
 import org.jdom2.Document;
 import org.jdom2.input.SAXBuilder;
-import org.jdom2.output.Format;
 import org.jdom2.output.XMLOutputter;
 
 import java.io.ByteArrayOutputStream;
@@ -41,15 +40,9 @@ public class PomSerde {
 
     public byte[] serialize(Document document) {
         try {
-            Format format = Format.getPrettyFormat()
-                    .setIndent(" ".repeat(config.indentSpacesNumber()))
-                    .setLineSeparator(config.lineSeparator())
-                    .setEncoding(config.encoding());
-            format.setSpecifiedAttributesOnly(config.formatSchemaLocation());
-
             ByteArrayOutputStream output = new ByteArrayOutputStream();
-            XMLOutputter outputter = new XMLOutputter(new PomOutputProcessor(config.indentSchemaLocation()));
-            outputter.setFormat(format);
+            XMLOutputter outputter = new XMLOutputter(config.buildOutputProcessor());
+            outputter.setFormat(config.buildFormat());
             outputter.output(document, output);
             return output.toByteArray();
         } catch (IOException e) {

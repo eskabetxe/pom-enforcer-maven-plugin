@@ -1,6 +1,7 @@
 package pro.boto.maven.plugin.pom.enforcer.rules;
 
 import pro.boto.maven.plugin.pom.enforcer.model.RuleViolation;
+import pro.boto.maven.plugin.pom.enforcer.model.ViolationDetail;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -10,9 +11,11 @@ import org.jdom2.input.SAXBuilder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class TemplateOrderRule implements PomRule {
 
@@ -21,15 +24,15 @@ public class TemplateOrderRule implements PomRule {
     private final Map<String, List<String>> orderMap = new HashMap<>();
 
     public TemplateOrderRule() {
-        withTemplatePath(DEFAULT_TEMPLATE_PATH);
+        withTemplate(DEFAULT_TEMPLATE_PATH);
     }
 
-    public TemplateOrderRule withTemplatePath(String templatePath) {
+    public TemplateOrderRule withTemplate(String templatePath) {
         if (templatePath != null && !templatePath.isBlank()) {
             SAXBuilder builder = new SAXBuilder();
-            // Always load from resources (classpath)
             try (InputStream is = getClass().getResourceAsStream(templatePath)) {
                 Document doc = builder.build(is);
+                orderMap.clear();
                 parseTemplate(doc.getRootElement());
             } catch (IOException | JDOMException e) {
                 throw new IllegalStateException(
@@ -46,7 +49,7 @@ public class TemplateOrderRule implements PomRule {
         List<String> order = new ArrayList<>();
         for (Element child : children) {
             order.add(child.getName());
-            parseTemplate(child); // Recursive to map inner levels
+            parseTemplate(child);
         }
         orderMap.put(element.getName(), order);
     }
@@ -57,58 +60,75 @@ public class TemplateOrderRule implements PomRule {
     }
 
     @Override
-    public List<RuleViolation> apply(Document document) {
-        List<RuleViolation> violations = new ArrayList<>();
-        sortAndCheck(document.getRootElement(), violations);
-        return violations;
+    public int getPriority() {
+        return 100;
     }
 
-    private void sortAndCheck(Element parent, List<RuleViolation> violations) {
-        List<Element> original = new ArrayList<>(parent.getChildren());
-        sortElement(parent);
+    // ---- READ-ONLY ----
 
-        if (!original.equals(parent.getChildren())) {
-            violations.add(new RuleViolation(
-                    getName(), "Elements in <" + parent.getName() + "> were not in the correct order."));
+    @Override
+    public List<RuleViolation> analyze(Document document) {
+        List<ViolationDetail> details = new ArrayList<>();
+        collectViolations(document.getRootElement(), details);
+        if (details.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Collections.singletonList(
+                new RuleViolation(getName(), "Elements are not in the expected order.", details));
+    }
+
+    private void collectViolations(Element parent, List<ViolationDetail> details) {
+        List<String> order = orderMap.get(parent.getName());
+        List<Element> children = parent.getChildren();
+
+        if (order != null && children.size() > 1) {
+            List<String> currentNames = children.stream().map(Element::getName).collect(Collectors.toList());
+
+            List<String> sortedNames = new ArrayList<>(currentNames);
+            sortedNames.sort(templateComparator(order));
+
+            if (!currentNames.equals(sortedNames)) {
+                details.add(new ViolationDetail(
+                        parent.getName(), String.join(", ", sortedNames), String.join(", ", currentNames)));
+            }
         }
 
-        for (Element child : parent.getChildren()) {
-            sortAndCheck(child, violations);
+        for (Element child : children) {
+            collectViolations(child, details);
         }
     }
 
-    public void sortElement(Element parent) {
+    // ---- MUTATION ----
 
+    @Override
+    public void apply(Document document) {
+        sortElement(document.getRootElement());
+    }
+
+    private void sortElement(Element parent) {
         List<String> order = orderMap.get(parent.getName());
         List<Element> children = new ArrayList<>(parent.getChildren());
 
         if (order != null && children.size() > 1) {
-            children.sort((left, right) -> {
-                int leftIndex = order.indexOf(left.getName());
-                int rightIndex = order.indexOf(right.getName());
-
-                // Both elements exist in the template order
-                if (leftIndex != -1 && rightIndex != -1) {
-                    return Integer.compare(leftIndex, rightIndex);
-                }
-
-                // Only left exists: left comes first
-                if (leftIndex != -1) return -1;
-
-                // Only right exists: right comes first
-                if (rightIndex != -1) return 1;
-
-                // Neither in template: fallback to alphabetical order
-                return left.getName().compareTo(right.getName());
-            });
-
-            // Replace all content with the newly sorted list
+            children.sort((left, right) -> templateComparator(order).compare(left.getName(), right.getName()));
             parent.setContent(children);
         }
 
-        // Recurse into children to apply sorting at all levels
         for (Element child : parent.getChildren()) {
             sortElement(child);
         }
+    }
+
+    // ---- SHARED ----
+
+    private java.util.Comparator<String> templateComparator(List<String> order) {
+        return (left, right) -> {
+            int leftIndex = order.indexOf(left);
+            int rightIndex = order.indexOf(right);
+            if (leftIndex != -1 && rightIndex != -1) return Integer.compare(leftIndex, rightIndex);
+            if (leftIndex != -1) return -1;
+            if (rightIndex != -1) return 1;
+            return left.compareTo(right);
+        };
     }
 }

@@ -1,4 +1,4 @@
-package pro.boto.maven.plugin.pom.enforcer.xml;
+package pro.boto.maven.plugin.pom.enforcer.serde;
 
 import org.jdom2.Attribute;
 import org.jdom2.Content;
@@ -31,11 +31,9 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
             this.write(out, "<");
             this.write(out, element.getQualifiedName());
 
-            // Handle Namespaces and Attributes for root tag alignment
             handleRootTagFormatting(out, fstack, nstack, element);
 
             if (content.isEmpty()) {
-                // Compact empty tag: <dependencies/>
                 this.write(out, "/>");
             } else {
                 this.write(out, ">");
@@ -44,14 +42,10 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
                 try {
                     Walker walker = this.buildWalker(fstack, content, true);
                     if (walker.hasNext()) {
-                        // Insert the leading newline and indentation for child elements
                         if (!walker.isAllText()) {
                             this.write(out, fstack.getPadBetween());
                         }
-
                         this.printContent(out, fstack, nstack, walker);
-
-                        // Insert the trailing newline and indentation before the closing tag
                         if (!walker.isAllText()) {
                             this.write(out, fstack.getPadLast());
                         }
@@ -72,11 +66,9 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
     private void handleRootTagFormatting(Writer out, FormatStack fstack, NamespaceStack nstack, Element element)
             throws IOException {
         if (!indentSchemaLocation || !"project".equals(element.getName())) {
-            // Correctly iterate and print all introduced namespaces
             for (Namespace ns : nstack.addedForward()) {
                 super.printNamespace(out, fstack, ns);
             }
-            // Print all attributes using standard space-separated logic
             if (element.hasAttributes()) {
                 for (Attribute attribute : element.getAttributes()) {
                     this.printAttribute(out, fstack, attribute);
@@ -85,7 +77,6 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
             return;
         }
 
-        // Custom alignment logic for <project> attributes and namespaces
         Iterator<Namespace> nsIterator = nstack.addedForward().iterator();
         boolean first = true;
         while (nsIterator.hasNext()) {
@@ -111,7 +102,6 @@ public class PomOutputProcessor extends AbstractXMLOutputProcessor {
 
     @Override
     protected void printAttribute(Writer out, FormatStack fstack, Attribute attribute) throws IOException {
-        // Standard attribute logic
         this.write(out, " ");
         this.write(out, attribute.getQualifiedName());
         this.write(out, "=");
